@@ -284,6 +284,104 @@ function RegisterScreen({ session, onDone }) {
   )
 }
 
+
+// ── 오이코스 등록 오버레이 (독립 컴포넌트 — 키보드 유지) ────────
+  const [form, setForm]       = useState({ name:'', phone:'', rel:'친구', stage:'호기심', topics:'', notes:'' })
+  const [saving, setSaving]   = useState(false)
+
+  const handleAdd = async () => {
+    if (!form.name.trim()) return
+    setSaving(true)
+    const { error } = await createOikos({
+      user_id: userId, name: form.name, phone: form.phone, relation: form.rel,
+      stage: form.stage, topics: form.topics.split('\n').filter(t => t.trim()), notes: form.notes,
+    })
+    setSaving(false)
+    if (error) { alert('저장 실패. 다시 시도해주세요.'); return }
+    onAdded(form.name)
+    onClose()
+  }
+
+  return (
+    <div style={{ position:'absolute', top:0, left:0, right:0, bottom:0, background:'#f7f5f0', zIndex:100, display:'flex', flexDirection:'column' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'14px 18px 10px', borderBottom:'0.5px solid #d3d1c7', flexShrink:0 }}>
+        <Btn onClick={onClose} style={{ width:30, height:30, borderRadius:'50%', background:'#e8e5de', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</Btn>
+        <span style={{ fontSize:15, fontWeight:700, color:'#1a1a2e', flex:1 }}>오이코스 등록</span>
+        <span style={{ fontSize:12, color:'#888780' }}>{addStep} / 2</span>
+      </div>
+      <div style={{ height:3, background:'#e8e5de', flexShrink:0 }}>
+        <div style={{ height:3, width:(addStep/2*100)+'%', background:'#534AB7', transition:'width 0.3s' }} />
+      </div>
+      <div style={{ flex:1, overflowY:'auto', padding:'20px 18px' }}>
+        {addStep===1 ? (
+          <>
+            <div style={{ fontSize:11, fontWeight:700, color:'#534AB7', letterSpacing:'0.06em', marginBottom:4 }}>STEP 1</div>
+            <div style={{ fontSize:20, fontWeight:700, color:'#1a1a2e', lineHeight:1.35, marginBottom:4 }}>누구를 위해<br />기도하나요?</div>
+            <div style={{ fontSize:13, color:'#888780', marginBottom:20 }}>기본 정보를 입력해주세요</div>
+            {[{ label:'이름', req:true, key:'name', ph:'홍길동' }, { label:'연락처', req:false, key:'phone', ph:'010-0000-0000' }].map(f => (
+              <div key={f.key} style={{ marginBottom:14 }}>
+                <div style={{ fontSize:12, fontWeight:700, color:'#444441', marginBottom:5 }}>{f.label} {f.req&&<span style={{ color:'#D85A30' }}>*</span>}</div>
+                <KrInput value={form[f.key]} onChange={v=>setForm(p=>({...p,[f.key]:v}))} placeholder={f.ph}
+                  style={{ width:'100%', height:42, background:'#fff', border:'0.5px solid #B4B2A9', borderRadius:10, padding:'0 12px', fontSize:14, fontFamily:'inherit', outline:'none', color:'#1a1a2e' }} />
+              </div>
+            ))}
+            <div style={{ marginBottom:24 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#444441', marginBottom:8 }}>관계</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:7 }}>
+                {RELS.map(r => (
+                  <div key={r} onClick={()=>setForm(p=>({...p,rel:r}))}
+                    style={{ background:form.rel===r?'#EEEDFE':'#fff', border:`0.5px solid ${form.rel===r?'#7F77DD':'#d3d1c7'}`, borderRadius:20, padding:'8px 4px', fontSize:12, fontWeight:form.rel===r?700:400, color:form.rel===r?'#3C3489':'#5F5E5A', textAlign:'center', cursor:'pointer' }}>
+                    {r}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <Btn onClick={()=>form.name.trim()&&setAddStep(2)}
+              style={{ width:'100%', height:48, background:form.name.trim()?'#1a1a2e':'#d3d1c7', borderRadius:14, color:'#fff', fontSize:15, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              다음 단계 →
+            </Btn>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize:11, fontWeight:700, color:'#534AB7', letterSpacing:'0.06em', marginBottom:4 }}>STEP 2</div>
+            <div style={{ fontSize:20, fontWeight:700, color:'#1a1a2e', lineHeight:1.35, marginBottom:4 }}>기도제목과<br />관계 단계를</div>
+            <div style={{ fontSize:13, color:'#888780', marginBottom:20 }}>AI 기도문 생성에 활용됩니다</div>
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#444441', marginBottom:5 }}>기도제목</div>
+              <KrTextarea value={form.topics} onChange={v=>setForm(p=>({...p,topics:v}))}
+                placeholder={'복음에 마음이 열리도록\n직장 스트레스가 줄어들도록'}
+                style={{ width:'100%', height:80, background:'#fff', border:'0.5px solid #B4B2A9', borderRadius:10, padding:'10px 12px', fontSize:13, fontFamily:'inherit', outline:'none', resize:'none', lineHeight:1.6, color:'#1a1a2e' }} />
+              <div style={{ fontSize:10, color:'#888780', marginTop:3 }}>한 줄에 하나씩 입력하세요</div>
+            </div>
+            <div style={{ marginBottom:24 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#444441', marginBottom:8 }}>현재 관계 단계</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {STAGES.map((s,i) => {
+                  const m=SM[s], descs=['교회나 복음에 관심 없는 상태','교회나 기독교에 호기심을 보임','마음을 열고 대화가 가능한 상태','전도축제 초청 받아들일 준비됨']
+                  return (
+                    <div key={s} onClick={()=>setForm(p=>({...p,stage:s}))}
+                      style={{ display:'flex', alignItems:'center', gap:10, background:form.stage===s?m.bg:'#fff', border:`0.5px solid ${form.stage===s?m.bar:'#d3d1c7'}`, borderRadius:10, padding:'10px 12px', cursor:'pointer' }}>
+                      <div style={{ width:10, height:10, borderRadius:'50%', background:form.stage===s?m.bar:'#d3d1c7', flexShrink:0 }} />
+                      <div>
+                        <div style={{ fontSize:13, fontWeight:700, color:form.stage===s?m.cl:'#1a1a2e' }}>{s}</div>
+                        <div style={{ fontSize:10, color:'#888780' }}>{descs[i]}</div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            <Btn onClick={handleAdd}
+              style={{ width:'100%', height:48, background:'#534AB7', borderRadius:14, color:'#fff', fontSize:15, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              {saving ? '저장 중...' : '등록 완료 ✓'}
+            </Btn>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ══════════════════════════════════════════════════════════════
 // 메인 앱
 // ══════════════════════════════════════════════════════════════
@@ -298,10 +396,8 @@ function OikosApp({ session, profile, setProfile }) {
   const [pState, setPState]   = useState('select')
   const [pStyle, setPStyle]   = useState('short')
   const [pResult, setPResult] = useState('')
-  const [addStep, setAddStep] = useState(1)
   const [stageF, setStageF]   = useState('전체')
   const [toast, setToast]     = useState('')
-  const [form, setForm]       = useState({ name:'', phone:'', rel:'친구', stage:'호기심', topics:'', notes:'' })
 
   const displayName = profile?.display_name || '성도'
   const displaySub  = [profile?.church_group, profile?.church_role].filter(Boolean).join(' ')
@@ -330,10 +426,7 @@ function OikosApp({ session, profile, setProfile }) {
 
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2400) }
   const openPrayer = (id) => { setSelId(id); setPState('select'); setPResult(''); setOverlay('prayer') }
-  const closeOverlay = () => {
-    setOverlay(null); setAddStep(1)
-    setForm({ name:'', phone:'', rel:'친구', stage:'호기심', topics:'', notes:'' })
-  }
+  const closeOverlay = () => setOverlay(null)
 
   const sendKakao = async (oikos, msg) => {
     const shareData = {
@@ -364,16 +457,7 @@ function OikosApp({ session, profile, setProfile }) {
   const handlePrayed = async (id) => {
     await logPrayer(userId, id); await loadData(); showToast('기도 완료! 🙏')
   }
-  const handleAddOikos = async () => {
-    if (!form.name.trim()) return
-    const { error } = await createOikos({
-      user_id:userId, name:form.name, phone:form.phone, relation:form.rel,
-      stage:form.stage, topics:form.topics.split('\n').filter(t=>t.trim()), notes:form.notes,
-    })
-    if (error) { showToast('저장 실패. 다시 시도해주세요.'); return }
-    await loadData(); closeOverlay(); setTab('list')
-    showToast(`${form.name}님이 등록되었어요 🙏`)
-  }
+
   const handleStageChange = async (id, s) => {
     await updateOikos(id, { stage:s }); await loadData()
     showToast(`'${s}'로 변경됐어요`)
@@ -618,85 +702,6 @@ ${selOikos.notes ? '메모: '+selOikos.notes : ''}
     </div>
   )
 
-  // ── 오이코스 등록 오버레이 ─────────────────────────────────────
-  const AddOv = () => (
-    <div style={{ position:'absolute', top:0, left:0, right:0, bottom:0, background:'#f7f5f0', zIndex:100, display:'flex', flexDirection:'column' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'14px 18px 10px', borderBottom:'0.5px solid #d3d1c7', flexShrink:0 }}>
-        <Btn onClick={closeOverlay} style={{ width:30, height:30, borderRadius:'50%', background:'#e8e5de', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</Btn>
-        <span style={{ fontSize:15, fontWeight:700, color:navy, flex:1 }}>오이코스 등록</span>
-        <span style={{ fontSize:12, color:'#888780' }}>{addStep} / 2</span>
-      </div>
-      <div style={{ height:3, background:'#e8e5de', flexShrink:0 }}>
-        <div style={{ height:3, width:(addStep/2*100)+'%', background:purple, transition:'width 0.3s' }} />
-      </div>
-      <div style={{ flex:1, overflowY:'auto', padding:'20px 18px' }}>
-        {addStep===1 ? (
-          <>
-            <div style={{ fontSize:11, fontWeight:700, color:purple, letterSpacing:'0.06em', marginBottom:4 }}>STEP 1</div>
-            <div style={{ fontSize:20, fontWeight:700, color:navy, lineHeight:1.35, marginBottom:4 }}>누구를 위해<br />기도하나요?</div>
-            <div style={{ fontSize:13, color:'#888780', marginBottom:20 }}>기본 정보를 입력해주세요</div>
-            {[{ label:'이름', req:true, key:'name', ph:'홍길동' }, { label:'연락처', req:false, key:'phone', ph:'010-0000-0000' }].map(f => (
-              <div key={f.key} style={{ marginBottom:14 }}>
-                <div style={{ fontSize:12, fontWeight:700, color:'#444441', marginBottom:5 }}>{f.label} {f.req&&<span style={{ color:'#D85A30' }}>*</span>}</div>
-                <KrInput value={form[f.key]} onChange={v=>setForm(p=>({...p,[f.key]:v}))} placeholder={f.ph}
-                  style={{ width:'100%', height:42, background:'#fff', border:'0.5px solid #B4B2A9', borderRadius:10, padding:'0 12px', fontSize:14, fontFamily:'inherit', outline:'none', color:navy }} />
-              </div>
-            ))}
-            <div style={{ marginBottom:24 }}>
-              <div style={{ fontSize:12, fontWeight:700, color:'#444441', marginBottom:8 }}>관계</div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:7 }}>
-                {RELS.map(r => (
-                  <div key={r} onClick={()=>setForm(p=>({...p,rel:r}))}
-                    style={{ background:form.rel===r?'#EEEDFE':'#fff', border:`0.5px solid ${form.rel===r?'#7F77DD':'#d3d1c7'}`, borderRadius:20, padding:'8px 4px', fontSize:12, fontWeight:form.rel===r?700:400, color:form.rel===r?'#3C3489':'#5F5E5A', textAlign:'center', cursor:'pointer' }}>
-                    {r}
-                  </div>
-                ))}
-              </div>
-            </div>
-            <Btn onClick={()=>form.name.trim()&&setAddStep(2)}
-              style={{ width:'100%', height:48, background:form.name.trim()?navy:'#d3d1c7', borderRadius:14, color:'#fff', fontSize:15, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center' }}>
-              다음 단계 →
-            </Btn>
-          </>
-        ) : (
-          <>
-            <div style={{ fontSize:11, fontWeight:700, color:purple, letterSpacing:'0.06em', marginBottom:4 }}>STEP 2</div>
-            <div style={{ fontSize:20, fontWeight:700, color:navy, lineHeight:1.35, marginBottom:4 }}>기도제목과<br />관계 단계를</div>
-            <div style={{ fontSize:13, color:'#888780', marginBottom:20 }}>AI 기도문 생성에 활용됩니다</div>
-            <div style={{ marginBottom:14 }}>
-              <div style={{ fontSize:12, fontWeight:700, color:'#444441', marginBottom:5 }}>기도제목</div>
-              <KrTextarea value={form.topics} onChange={v=>setForm(p=>({...p,topics:v}))}
-                placeholder={'복음에 마음이 열리도록\n직장 스트레스가 줄어들도록'}
-                style={{ width:'100%', height:80, background:'#fff', border:'0.5px solid #B4B2A9', borderRadius:10, padding:'10px 12px', fontSize:13, fontFamily:'inherit', outline:'none', resize:'none', lineHeight:1.6, color:navy }} />
-              <div style={{ fontSize:10, color:'#888780', marginTop:3 }}>한 줄에 하나씩 입력하세요</div>
-            </div>
-            <div style={{ marginBottom:24 }}>
-              <div style={{ fontSize:12, fontWeight:700, color:'#444441', marginBottom:8 }}>현재 관계 단계</div>
-              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                {STAGES.map((s,i) => {
-                  const m=SM[s], descs=['교회나 복음에 관심 없는 상태','교회나 기독교에 호기심을 보임','마음을 열고 대화가 가능한 상태','전도축제 초청 받아들일 준비됨']
-                  return (
-                    <div key={s} onClick={()=>setForm(p=>({...p,stage:s}))}
-                      style={{ display:'flex', alignItems:'center', gap:10, background:form.stage===s?m.bg:'#fff', border:`0.5px solid ${form.stage===s?m.bar:'#d3d1c7'}`, borderRadius:10, padding:'10px 12px', cursor:'pointer' }}>
-                      <div style={{ width:10, height:10, borderRadius:'50%', background:form.stage===s?m.bar:'#d3d1c7', flexShrink:0 }} />
-                      <div>
-                        <div style={{ fontSize:13, fontWeight:700, color:form.stage===s?m.cl:navy }}>{s}</div>
-                        <div style={{ fontSize:10, color:'#888780' }}>{descs[i]}</div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-            <Btn onClick={handleAddOikos}
-              style={{ width:'100%', height:48, background:purple, borderRadius:14, color:'#fff', fontSize:15, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center' }}>
-              등록 완료 ✓
-            </Btn>
-          </>
-        )}
-      </div>
-    </div>
-  )
 
   // ── AI 기도문 오버레이 ─────────────────────────────────────────
   const PrayerOv = () => (
@@ -823,7 +828,13 @@ ${selOikos.notes ? '메모: '+selOikos.notes : ''}
           </div>
         ))}
       </div>
-      {overlay==='add'    && <AddOv />}
+      {overlay==='add' && (
+        <AddOverlay
+          userId={userId}
+          onClose={closeOverlay}
+          onAdded={(name) => { loadData(); setTab('list'); showToast(`${name}님이 등록되었어요 🙏`) }}
+        />
+      )}
       {overlay==='prayer' && <PrayerOv />}
       {toast && (
         <div style={{ position:'absolute', bottom:72, left:'50%', transform:'translateX(-50%)', background:navy, color:'#fff', fontSize:13, fontWeight:500, padding:'10px 18px', borderRadius:20, whiteSpace:'nowrap', zIndex:200, maxWidth:'80%', textAlign:'center' }}>
