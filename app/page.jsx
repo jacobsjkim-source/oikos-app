@@ -96,33 +96,39 @@ export default function Page() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
+    // 세션 확인 (로컬 캐시에서 즉시) → 화면 즉시 표시
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      setLoading(false) // 프로필 기다리지 않고 즉시 화면 표시
+
+      // 프로필은 백그라운드에서 로드
       if (data.session) {
-        setSession(data.session)
-        const { data: prof } = await fetchProfile(data.session.user.id)
-        setProfile(prof)
+        fetchProfile(data.session.user.id).then(({ data: prof }) => {
+          setProfile(prof)
+        })
       }
-      setLoading(false)
     })
-    const { data:{ subscription } } = supabase.auth.onAuthStateChange(async (_, s) => {
+
+    // 혹시 3초 안에 안 끝나면 강제로 표시
+    const timeout = setTimeout(() => setLoading(false), 3000)
+
+    const { data:{ subscription } } = supabase.auth.onAuthStateChange((_, s) => {
       setSession(s)
       if (s) {
-        const { data: prof } = await fetchProfile(s.user.id)
-        setProfile(prof)
+        fetchProfile(s.user.id).then(({ data: prof }) => setProfile(prof))
       }
     })
-    return () => subscription.unsubscribe()
+    return () => { subscription.unsubscribe(); clearTimeout(timeout) }
   }, [])
 
   if (loading) return <Center>불러오는 중...</Center>
 
-  // 세션은 있지만 이름 미등록 → 프로필 설정
   const needsProfile = session && (!profile?.display_name || !profile?.church_group)
 
   if (!session || needsProfile) return (
     <RegisterScreen
       session={session}
-      onDone={async (s, prof) => { setSession(s); setProfile(prof) }}
+      onDone={(s, prof) => { setSession(s); setProfile(prof) }}
     />
   )
 
