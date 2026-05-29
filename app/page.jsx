@@ -262,7 +262,7 @@ function RegisterScreen({ session, onDone }) {
 
             {name.trim() && group && (
               <div style={{ marginTop:14, padding:'12px 16px', background:'rgba(255,255,255,0.06)', borderRadius:12, fontSize:12, color:'#AFA9EC', textAlign:'center', lineHeight:1.8 }}>
-                <span style={{ color:'#9FE1CB', fontWeight:700 }}>{group}</span> {dept==='교구'?role:''} <span style={{ color:'#fff', fontWeight:700 }}>{name}</span>님으로 등록돼요
+                <span style={{ color:'#9FE1CB', fontWeight:700 }}>{group}</span> <span style={{ color:'#fff', fontWeight:700 }}>{name}</span> {dept==='교구'?role:''}님으로 등록돼요
               </div>
             )}
           </div>
@@ -383,9 +383,9 @@ ${selOikos.notes ? '메모: '+selOikos.notes : ''}
       <div style={{ background:navy, padding:'16px 20px 20px' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
           <div>
-            <div style={{ fontSize:12, color:'#AFA9EC', marginBottom:2 }}>{displaySub}</div>
+            <div style={{ fontSize:12, color:'#AFA9EC', marginBottom:2 }}>{profile?.church_group}</div>
             <div style={{ fontSize:19, fontWeight:700, color:'#fff', lineHeight:1.35 }}>
-              <span style={{ color:'#9FE1CB' }}>{displayName}</span>님,<br />오늘도 기도해요 🙏
+              <span style={{ color:'#9FE1CB' }}>{displayName}</span> {profile?.church_role||''}님,<br />오늘도 기도해요 🙏
             </div>
           </div>
           <Btn onClick={signOut} style={{ background:'rgba(255,255,255,0.1)', borderRadius:20, padding:'5px 12px', fontSize:11, color:'#AFA9EC' }}>로그아웃</Btn>
