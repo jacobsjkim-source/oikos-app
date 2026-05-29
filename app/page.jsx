@@ -177,8 +177,10 @@ function RegisterScreen({ session, onDone }) {
 
       {/* 헤더 */}
       <div style={{ padding:'40px 24px 24px', textAlign:'center' }}>
-        <div style={{ fontSize:44, marginBottom:12 }}>🙏</div>
-        <div style={{ fontSize:22, fontWeight:700, color:'#fff', marginBottom:4 }}>오이코스 전도 프로그램</div>
+        <div style={{ background:'rgba(0,0,0,0.4)', borderRadius:16, padding:'12px 24px', marginBottom:16 }}>
+  <img src="/logo.png" alt="하남교회" style={{ width:200, display:'block' }} />
+</div>
+<div style={{ fontSize:20, fontWeight:700, color:'#fff', marginBottom:4 }}>오이코스 전도 프로그램</div>
         <div style={{ fontSize:13, color:'#AFA9EC' }}>소중한 한 영혼을 위한 30일 기도 여정</div>
       </div>
 
