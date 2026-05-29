@@ -73,15 +73,19 @@ const Btn = ({ onClick, children, style={} }) =>
 
 // ── 한글 IME 지원 ──────────────────────────────────────────────
 function KrInput({ value, onChange, style={}, ...p }) {
+  const composing = useRef(false)
   return <input value={value}
-    onChange={(e) => { if (!e.nativeEvent?.isComposing) onChange(e.target.value) }}
-    onCompositionEnd={(e) => onChange(e.target.value)}
+    onCompositionStart={() => { composing.current = true }}
+    onCompositionEnd={(e) => { composing.current = false; onChange(e.target.value) }}
+    onChange={(e) => { if (!composing.current) onChange(e.target.value) }}
     style={style} {...p} />
 }
 function KrTextarea({ value, onChange, style={}, ...p }) {
+  const composing = useRef(false)
   return <textarea value={value}
-    onChange={(e) => { if (!e.nativeEvent?.isComposing) onChange(e.target.value) }}
-    onCompositionEnd={(e) => onChange(e.target.value)}
+    onCompositionStart={() => { composing.current = true }}
+    onCompositionEnd={(e) => { composing.current = false; onChange(e.target.value) }}
+    onChange={(e) => { if (!composing.current) onChange(e.target.value) }}
     style={style} {...p} />
 }
 
