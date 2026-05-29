@@ -311,6 +311,13 @@ function OikosApp({ session, profile, setProfile }) {
   }, [userId])
 
   useEffect(() => { loadData() }, [loadData])
+
+  // 카카오 SDK 초기화
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.Kakao && !window.Kakao.isInitialized()) {
+      window.Kakao.init(process.env.NEXT_PUBLIC_KAKAO_JS_KEY)
+    }
+  }, [])
   useEffect(() => {
     const ch = subscribeOikos(userId, () => loadData())
     return () => supabase.removeChannel(ch)
@@ -329,6 +336,35 @@ function OikosApp({ session, profile, setProfile }) {
   }
 
   const sendKakao = (oikos, msg) => {
+    // 카카오 공유 SDK 사용 (썸네일 포함)
+    if (typeof window !== 'undefined' && window.Kakao?.isInitialized?.()) {
+      try {
+        window.Kakao.Share.sendDefault({
+          objectType: 'feed',
+          content: {
+            title: oikos.name + '님께 안부를 전해요 🙏',
+            description: msg,
+            imageUrl: 'https://oikos-app-eta.vercel.app/logo.png',
+            link: {
+              mobileWebUrl: 'https://oikos-app-eta.vercel.app',
+              webUrl: 'https://oikos-app-eta.vercel.app',
+            },
+          },
+          buttons: [{
+            title: '오이코스 앱 열기',
+            link: {
+              mobileWebUrl: 'https://oikos-app-eta.vercel.app',
+              webUrl: 'https://oikos-app-eta.vercel.app',
+            },
+          }],
+        })
+        logAction(userId, oikos.id, 'message', msg)
+        return
+      } catch(e) {
+        console.log('카카오 공유 실패, 클립보드로 대체')
+      }
+    }
+    // 폴백: 클립보드 복사
     navigator.clipboard?.writeText(msg).catch(()=>{})
     const isM = /Android|iPhone|iPad/i.test(navigator.userAgent)
     if (isM) window.location.href = 'kakaotalk://launch'
