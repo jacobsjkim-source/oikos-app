@@ -597,7 +597,105 @@ function MessageSelectOverlay({ oikos, onClose }) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// 메인 앱
+// 기도제목 수정 — 카드 플립 (이름 누르면 휙 돌아감)
+// ══════════════════════════════════════════════════════════════
+function EditTopicsOverlay({ oikos, onClose, onSaved }) {
+  const [flipped, setFlipped] = useState(false)
+  const [topics, setTopics]   = useState((oikos.topics || []).join('\n'))
+  const [saving, setSaving]   = useState(false)
+  const [savedList, setSavedList] = useState(oikos.topics || [])
+  const ci = oikos._ci || 0
+
+  // 열리면 잠깐 앞면 보여준 뒤 휙~ 뒤집기
+  useEffect(() => {
+    const t = setTimeout(() => setFlipped(true), 320)
+    return () => clearTimeout(t)
+  }, [])
+
+  const handleSave = async () => {
+    setSaving(true)
+    const list = topics.split('\n').map(t => t.trim()).filter(Boolean)
+    await updateOikos(oikos.id, { topics: list })
+    setSaving(false)
+    setSavedList(list)       // 앞면도 새 내용으로 갱신
+    setFlipped(false)        // 앞면으로 휙 돌아가며 결과 보여주기
+    onSaved(list)
+    setTimeout(onClose, 1100)
+  }
+
+  const m = SM[oikos.stage] || SM['호기심']
+  const [avBg, avCl] = AVC[ci % AVC.length]
+
+  return (
+    <div onClick={onClose}
+      style={{ position:'absolute', inset:0, background:'rgba(20,20,35,0.55)', backdropFilter:'blur(3px)', zIndex:150, display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ width:'100%', maxWidth:330, perspective:1400 }}>
+        <div style={{
+          position:'relative', width:'100%', height:420,
+          transformStyle:'preserve-3d',
+          transition:'transform 0.7s cubic-bezier(0.4,0.2,0.2,1)',
+          transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+        }}>
+          {/* ── 앞면: 정보 ── */}
+          <div onClick={()=>setFlipped(true)} style={{
+            position:'absolute', inset:0, backfaceVisibility:'hidden', WebkitBackfaceVisibility:'hidden',
+            background:'#fff', borderRadius:24, padding:24, cursor:'pointer',
+            boxShadow:'0 20px 50px rgba(0,0,0,0.3)',
+            display:'flex', flexDirection:'column', alignItems:'center',
+          }}>
+            <div style={{ width:72, height:72, borderRadius:'50%', background:avBg, color:avCl, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, fontWeight:700, marginBottom:14 }}>
+              {oikos.name?.slice(0,2)}
+            </div>
+            <div style={{ fontSize:19, fontWeight:700, color:navy, marginBottom:4 }}>{oikos.name}</div>
+            <div style={{ fontSize:12, color:'#888780', marginBottom:14 }}>{oikos.relation} · Day {oikos.day_in_challenge||1}</div>
+            <div style={{ width:'100%', flex:1, overflowY:'auto' }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'#888780', marginBottom:8 }}>기도제목</div>
+              {savedList.length ? savedList.map((t,i)=>(
+                <div key={i} style={{ display:'flex', gap:6, alignItems:'flex-start', background:'#f7f5f0', borderRadius:8, padding:'8px 10px', marginBottom:5 }}>
+                  <div style={{ width:5, height:5, borderRadius:'50%', background:m.bar, marginTop:6, flexShrink:0 }} />
+                  <span style={{ fontSize:12, color:'#444441', lineHeight:1.5 }}>{t}</span>
+                </div>
+              )) : <div style={{ fontSize:12, color:'#B4B2A9' }}>아직 기도제목이 없어요</div>}
+            </div>
+            <div style={{ fontSize:11, color:purple, fontWeight:700, marginTop:10 }}>{flipped ? '' : '탭하면 수정 화면으로 ✏️'}</div>
+          </div>
+
+          {/* ── 뒷면: 수정 ── */}
+          <div style={{
+            position:'absolute', inset:0, backfaceVisibility:'hidden', WebkitBackfaceVisibility:'hidden',
+            transform:'rotateY(180deg)',
+            background:'#fff', borderRadius:24, padding:22,
+            boxShadow:'0 20px 50px rgba(0,0,0,0.3)',
+            display:'flex', flexDirection:'column',
+          }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+              <div style={{ width:38, height:38, borderRadius:'50%', background:avBg, color:avCl, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700 }}>
+                {oikos.name?.slice(0,2)}
+              </div>
+              <div>
+                <div style={{ fontSize:15, fontWeight:700, color:navy }}>{oikos.name}님의</div>
+                <div style={{ fontSize:11, color:'#888780' }}>기도제목 수정 ✏️</div>
+              </div>
+            </div>
+            <KrTextarea value={topics} onChange={setTopics}
+              placeholder={'복음에 마음이 열리도록\n가정에 평안이 임하도록\n교회에 함께 나오도록'}
+              style={{ flex:1, width:'100%', background:'#f7f5f0', border:'1.5px solid #e8e5de', borderRadius:14, padding:'12px 14px', fontSize:13, fontFamily:'inherit', outline:'none', resize:'none', lineHeight:1.7, color:navy }} />
+            <div style={{ fontSize:10, color:'#888780', margin:'6px 2px 12px' }}>한 줄에 하나씩 입력하세요</div>
+            <div style={{ display:'flex', gap:8 }}>
+              <Btn onClick={()=>setFlipped(false)} style={{ width:48, height:46, background:'#f1efe8', borderRadius:12, fontSize:18 }}>↩</Btn>
+              <Btn onClick={handleSave} style={{ flex:1, height:46, background:purple, borderRadius:12, color:'#fff', fontSize:14, fontWeight:700 }}>
+                {saving ? '저장 중...' : '저장하기 ✓'}
+              </Btn>
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign:'center', marginTop:14 }}>
+          <Btn onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', color:'#fff', borderRadius:20, padding:'7px 18px', fontSize:12, fontWeight:700 }}>닫기</Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
 // ══════════════════════════════════════════════════════════════
 function OikosApp({ session, profile, setProfile }) {
   const userId = session.user.id
@@ -608,6 +706,7 @@ function OikosApp({ session, profile, setProfile }) {
   const [overlay, setOverlay]        = useState(null)
   const [selId, setSelId]            = useState(null)
   const [msgTarget, setMsgTarget]    = useState(null)
+  const [editTarget, setEditTarget]  = useState(null)
   const [deleteTarget, setDelTarget] = useState(null)
   const [pState, setPState]          = useState('select')
   const [pStyle, setPStyle]          = useState('short')
@@ -654,6 +753,7 @@ function OikosApp({ session, profile, setProfile }) {
   const showToast  = (m) => { setToast(m); setTimeout(() => setToast(''), 2400) }
   const openPrayer = (id) => { setSelId(id); setPState('select'); setPResult(''); setOverlay('prayer') }
   const openMsg    = (o)  => { setMsgTarget(o); setOverlay('message') }
+  const openEdit   = (o, idx)  => { setEditTarget({ ...o, _ci: idx }) }
 
   const handlePrayed = async (id) => { await logPrayer(userId, id); await loadData(); showToast('기도 완료! 🙏') }
 
@@ -779,8 +879,11 @@ function OikosApp({ session, profile, setProfile }) {
                   <div key={o.id} style={{ scrollSnapAlign:'start', flexShrink:0, width:'85%', background:prayed?'#3DAE8A':purple, borderRadius:18, padding:16, transition:'background 0.3s' }}>
                     <div style={{ display:'flex', gap:12, alignItems:'center', marginBottom:10 }}>
                       <Av name={o.name} ci={i} size={48} />
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:15, fontWeight:700, color:'#fff' }}>{o.name}</div>
+                      <div onClick={()=>openEdit(o, i)} style={{ flex:1, minWidth:0, cursor:'pointer' }}>
+                        <div style={{ fontSize:15, fontWeight:700, color:'#fff', display:'flex', alignItems:'center', gap:5 }}>
+                          {o.name}
+                          <span style={{ fontSize:11, opacity:0.7 }}>✏️</span>
+                        </div>
                         <div style={{ fontSize:11, color:'rgba(255,255,255,0.75)', marginTop:1 }}>{o.relation} · Day {o.day_in_challenge||1}</div>
                       </div>
                       <SPill stage={o.stage} />
@@ -886,9 +989,10 @@ function OikosApp({ session, profile, setProfile }) {
             return (
               <div key={o.id} style={{ background:'#fff',borderTop:'0.5px solid #d3d1c7',borderRight:'0.5px solid #d3d1c7',borderBottom:'0.5px solid #d3d1c7',borderLeft:'3px solid '+bar,borderRadius:'0 14px 14px 0',padding:'12px 14px',display:'flex',gap:10,alignItems:'center' }}>
                 <Av name={o.name} ci={idx} size={42} />
-                <div style={{ flex:1,minWidth:0 }}>
+                <div onClick={()=>openEdit(o, idx)} style={{ flex:1,minWidth:0,cursor:'pointer' }}>
                   <div style={{ display:'flex',alignItems:'center',gap:6,marginBottom:2 }}>
                     <span style={{ fontSize:13,fontWeight:700,color:navy }}>{o.name}</span>
+                    <span style={{ fontSize:10,opacity:0.5 }}>✏️</span>
                     <span style={{ fontSize:10,color:'#888780',background:'#f1efe8',borderRadius:10,padding:'1px 6px' }}>{o.relation}</span>
                   </div>
                   <div style={{ fontSize:11,color:'#888780' }}>기도 {streak}일 · Day {o.day_in_challenge||1}</div>
@@ -1124,6 +1228,14 @@ function OikosApp({ session, profile, setProfile }) {
       {overlay==='prayer' && <PrayerOv />}
       {overlay==='message' && msgTarget && (
         <MessageSelectOverlay oikos={msgTarget} onClose={()=>{ setOverlay(null); setMsgTarget(null) }} />
+      )}
+
+      {editTarget && (
+        <EditTopicsOverlay
+          oikos={editTarget}
+          onClose={()=>setEditTarget(null)}
+          onSaved={()=>{ loadData(); showToast('기도제목이 수정됐어요 🙏') }}
+        />
       )}
 
       {/* 삭제 확인 */}
