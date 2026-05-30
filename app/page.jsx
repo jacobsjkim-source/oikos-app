@@ -5,12 +5,13 @@ import {
   fetchOikos, createOikos, updateOikos, deleteOikos,
   fetchPrayerLogs, logPrayer, logAction,
   fetchProfile, saveProfile,
-  calcStreak, calcTotalStreak, prayedToday,
+  calcStreak, calcTotalStreak, prayedToday, localYMD,
   savePushSub, subscribeOikos,
 } from '../lib/supabase'
 
 // ── 전도축제 날짜 ──────────────────────────────────────────────
-const FESTIVAL = new Date('2025-10-25')
+const FESTIVAL = new Date('2026-10-25')
+const FESTIVAL_NAME = '프라미스 전도축제'
 const getDaysUntil = () => {
   const t = new Date(); t.setHours(0,0,0,0)
   const f = new Date(FESTIVAL); f.setHours(0,0,0,0)
@@ -55,36 +56,52 @@ const DAY_ACTIONS = [
 ]
 const getDA = (day) => DAY_ACTIONS.find(a => day <= a.until) || DAY_ACTIONS[4]
 
-// ── 메시지 템플릿 ──────────────────────────────────────────────
+// ── 30일치 일일 메시지 (관계형성→친밀→나눔→초청) ──────────────
+// 각 날짜마다 다른 문구. c=가까운사이(가족/친구), f=정중한사이
+const DAILY_MSGS = [
+  // 1주차: 관계 형성 · 안부
+  { c:['{n}, 오랜만이야! 잘 지내지? 갑자기 생각나서 연락했어 😊','{n}, 요즘 어떻게 지내? 문득 궁금해서 ㅎㅎ'], f:['{n}님, 안녕하세요! 오랜만에 안부 여쭤요. 잘 지내시죠? 😊','{n}님, 잘 지내고 계신가요? 문득 생각나서 연락드려요'] },
+  { c:['{n}, 오늘 하루는 어땠어? 별일 없지? 😄','{n}, 요즘 바쁘게 지내? 무리하지 말고~'], f:['{n}님, 오늘 하루 잘 보내셨어요? 😊','{n}님, 요즘 어떻게 지내시는지 궁금했어요'] },
+  { c:['{n}, 날씨 진짜 좋다! 이런 날엔 네 생각나더라 🌿','{n}, 오늘 하늘 봤어? 너무 예뻐서 생각났어 ☀️'], f:['{n}님, 날씨가 참 좋네요. 좋은 하루 보내세요 🌿','{n}님, 화창한 날이에요. 행복한 하루 되시길 바라요 ☀️'] },
+  { c:['{n}, 이번 주도 화이팅이야! 응원할게 💪','{n}, 한 주 시작인데 힘내자! 늘 응원해 😊'], f:['{n}님, 이번 한 주도 힘내세요! 응원할게요 💪','{n}님, 좋은 한 주 보내시길 기도할게요 😊'] },
+  { c:['{n}, 밥은 잘 챙겨먹고 다녀? 건강 챙겨 🍚','{n}, 끼니 거르지 말고! 몸이 재산이야 😄'], f:['{n}님, 식사는 잘 챙기고 계세요? 건강 챙기세요 🍚','{n}님, 바쁘셔도 끼니 거르지 마세요 😊'] },
+  { c:['{n}, 커피 한 잔 보낼게! 잠깐 쉬면서 마셔 ☕','{n}, 오늘 고생했어. 따뜻한 거 한 잔 해 ☕'], f:['{n}님, 작은 마음이에요. 커피 한 잔 하세요 ☕','{n}님, 잠깐 쉬시라고 커피 보내드려요 ☕'] },
+  { c:['{n}, 한 주 수고 많았어! 주말 푹 쉬어 😊','{n}, 이번 주도 고생했어~ 좋은 주말 보내'], f:['{n}님, 한 주 수고 많으셨어요. 주말 잘 보내세요 😊','{n}님, 평안한 주말 보내시길 바라요'] },
+  // 2주차: 친밀감 · 만남
+  { c:['{n}, 우리 얼굴 본 지 너무 오래됐다! 언제 한번 보자 😄','{n}, 보고 싶다~ 시간 되면 얼굴 한번 보자'], f:['{n}님, 한번 뵙고 싶어요. 시간 괜찮으세요? 😊','{n}님, 오랜만에 얼굴 한번 뵙고 싶네요'] },
+  { c:['{n}, 우리 밥 한 끼 하자! 내가 살게 ㅎㅎ','{n}, 맛있는 거 먹으러 가자. 언제 시간 돼?'], f:['{n}님, 식사 한번 같이 하실래요? 😄','{n}님, 맛있는 곳 알아뒀는데 같이 가요'] },
+  { c:['{n}, 넌 늘 밝아서 옆에 있으면 기분 좋아져 😊','{n}, 너 만나면 항상 힘이 나더라. 고마워'], f:['{n}님, 늘 긍정적이셔서 뵐 때마다 좋아요 😊','{n}님과 얘기하면 늘 힘이 나요'] },
+  { c:['{n}, 혹시 필요한 거 있으면 언제든 말해! 도울게','{n}, 힘든 일 있으면 편하게 얘기해~ 들어줄게'], f:['{n}님, 도움 필요하시면 언제든 말씀하세요','{n}님, 어려운 일 있으시면 편하게 연락주세요'] },
+  { c:['{n}, 문득 예전에 같이 놀던 거 생각나더라 ㅎㅎ','{n}, 우리 옛날 얘기하면서 추억 돋았어 😄'], f:['{n}님, 예전 함께한 시간이 문득 생각나네요 😊','{n}님과의 좋은 기억이 떠올랐어요'] },
+  { c:['{n}, 나 요즘 이렇게 지내! 너는 어때? 😊','{n}, 요즘 내 근황 공유! 너도 얘기해줘'], f:['{n}님, 요즘 저는 이렇게 지내요. {n}님은요? 😊','{n}님 근황도 궁금해요. 잘 지내시죠?'] },
+  { c:['{n}, 주말 계획 있어? 없으면 같이 뭐라도 하자!','{n}, 이번 주말 뭐해? 바람 쐬러 갈까? 😄'], f:['{n}님, 주말 평안히 보내세요 😊','{n}님, 주말에 시간 되시면 차 한잔해요'] },
+  // 3주차: 마음 나눔
+  { c:['{n}, 나 요즘 마음이 참 편안해졌어. 신기하지? 😊','{n}, 요즘 마음에 여유가 생긴 것 같아'], f:['{n}님, 요즘 마음이 참 평안해요 😊','{n}님, 요즘 마음의 여유가 생겼어요'] },
+  { c:['{n}, 너 같은 친구 있어서 참 감사해 💚','{n}, 살면서 너 만난 게 복이야. 고마워'], f:['{n}님 같은 분이 곁에 있어 감사해요 💚','{n}님, 늘 감사한 마음이에요'] },
+  { c:['{n}, 나 요즘 좋은 글 읽고 있는데 마음이 따뜻해져 📖','{n}, 요즘 마음에 와닿는 글귀가 있어서 나누고 싶어'], f:['{n}님, 요즘 좋은 말씀 읽으며 위로받고 있어요 📖','{n}님, 마음에 남는 글이 있어 나누고 싶었어요'] },
+  { c:['{n}, 혹시 요즘 힘든 일 있어? 언제든 들어줄게','{n}, 마음 무거운 일 있으면 나한테 털어놔도 돼'], f:['{n}님, 힘드신 일 있으면 언제든 말씀하세요','{n}님, 마음 어려우실 때 편하게 연락주세요'] },
+  { c:['{n}, 나 요즘 좀 달라진 것 같지 않아? ㅎㅎ 마음이 밝아졌어','{n}, 요즘 내가 좀 평온해 보이지? 이유가 있어 😊'], f:['{n}님, 요즘 제 마음이 많이 밝아졌어요 😊','{n}님, 요즘 마음에 평안이 찾아왔어요'] },
+  { c:['{n}, 나 요즘 교회에서 좋은 사람들 많이 만났어 😊','{n}, 좋은 공동체를 만나서 마음이 따뜻해'], f:['{n}님, 요즘 좋은 분들을 많이 만나고 있어요 😊','{n}님, 따뜻한 공동체를 만났어요'] },
+  { c:['{n}, 언젠가 너랑 같이 가보고 싶은 곳이 있어 😊','{n}, 너한테 소개해주고 싶은 곳이 있어!'], f:['{n}님, 함께 가보고 싶은 곳이 있어요 😊','{n}님께 소개해드리고 싶은 곳이 있어요'] },
+  // 4주차: 초청
+  { c:['{n}, 우리 교회에서 특별한 행사를 하는데, 너 생각이 났어 😊','{n}, 곧 교회에서 좋은 행사가 있어. 같이 갈래?'], f:['{n}님, 저희 교회에서 특별한 행사가 있어요. 생각이 나서요 😊','{n}님, 곧 좋은 행사가 있는데 함께하면 어떨까요?'] },
+  { c:['{n}, 부담 갖지 말고 그냥 놀러온다 생각하고 와! 😄','{n}, 진짜 편하게 구경만 와도 돼. 어때?'], f:['{n}님, 부담 없이 편하게 구경 오셔도 돼요 😄','{n}님, 그냥 가볍게 와보셔도 좋아요'] },
+  { c:['{n}, 너랑 같이 가면 진짜 좋을 것 같아! 같이 가자 😊','{n}, 혼자 가기보다 너랑 같이 가고 싶어'], f:['{n}님, 함께 가면 정말 좋을 것 같아요 😊','{n}님과 같이 가고 싶어서요'] },
+  { c:['{n}, '+FESTIVAL_NAME+'이 10월 25일에 열려! 그날 같이 가자 🙏','{n}, 10월 25일 '+FESTIVAL_NAME+'인데 꼭 같이 가고 싶어'], f:['{n}님, 10월 25일 '+FESTIVAL_NAME+'에 초대하고 싶어요 🙏','{n}님, 10월 25일에 특별한 행사가 있어요'] },
+  { c:['{n}, 지난번에 말한 그 행사 말야! 마음에 두고 있어? 😊','{n}, 그 교회 행사, 같이 가는 거 생각해봤어?'], f:['{n}님, 지난번 말씀드린 행사 기억하시죠? 😊','{n}님, 그 행사 함께 가실 수 있을까 해서요'] },
+  { c:['{n}, 너랑 꼭 같이 가고 싶어서 다시 연락했어 💚','{n}, 진심으로 너랑 함께하고 싶어. 와줄 수 있어?'], f:['{n}님과 꼭 함께 가고 싶어서 다시 연락드려요 💚','{n}님, 진심으로 함께하고 싶어요'] },
+  { c:['{n}, 행사가 며칠 안 남았어! 같이 갈 준비 됐지? 😄','{n}, 곧이야! 그날 비워둬, 같이 가자'], f:['{n}님, 행사가 곧이에요! 함께해주시면 좋겠어요 😄','{n}님, 며칠 안 남았어요. 시간 비워두세요'] },
+  { c:['{n}, 딱 한 번만 와봐. 진짜 후회 안 할 거야 🙏','{n}, 한 번만 믿고 와줘. 좋은 시간 될 거야'], f:['{n}님, 한 번만 와보시면 정말 좋으실 거예요 🙏','{n}님, 믿고 한번 와주시면 감사하겠어요'] },
+  { c:['{n}, 오늘이야! 우리 같이 가자 😊 기다릴게!','{n}, 드디어 오늘! 같이 가는 거 잊지 않았지? 🙏'], f:['{n}님, 오늘이에요! 함께 가요 😊 기다릴게요','{n}님, 드디어 오늘이네요. 뵙기를 기대해요 🙏'] },
+]
+
 function getMessageTemplates(oikos) {
-  const n = oikos.name, day = oikos.day_in_challenge || 1
+  const n = oikos.name
+  const day = Math.max(1, Math.min(30, oikos.day_in_challenge || 1))
   const close = ['가족','친구'].includes(oikos.relation || '')
-  if (day <= 3) return [
-    close ? n+'아, 요즘 어떻게 지내? 오랜만에 생각나서 연락해봤어 😊' : n+'씨, 안녕하세요! 잘 지내고 계시죠? 오랜만에 연락드려요 :)',
-    close ? '안녕 '+n+'아! 요즘 바쁘게 지내? 좋은 하루 보내길 바라 ☀️' : n+'씨, 날씨가 좋아서 생각나서 연락드렸어요 🌿',
-    close ? n+'아, 건강하게 잘 지내고 있어? 요즘 날씨에 생각났어 🌿' : n+'씨, 안녕하세요 😊 요즘 어떻게 지내시나요?',
-    close ? n+'아~ 오랜만이야! 잘 지내지? 보고 싶어서 연락해봤어 😄' : n+'씨, 좋은 하루 보내고 계신가요? 안부 여쭤요 😄',
-  ]
-  if (day <= 7) return [
-    close ? n+'아, 오늘 커피 한 잔 하면서 잠깐 쉬어 ☕ 고마워서 보내봤어!' : n+'씨, 작은 거지만 커피 한 잔 드시면서 힐링하세요 ☕',
-    close ? n+'아, 요즘 고생 많지? 작은 선물이지만 받아줘 😊' : n+'씨, 요즘 고생 많으신 것 같아서 작은 선물 드려요 😊',
-    close ? n+'아~ 뜬금없지만 커피 한 잔! 잠깐이라도 쉬면서 마셔 ☕' : n+'씨, 바쁘신 중에 잠깐이라도 쉬시라고 커피 보내드려요 ☕',
-  ]
-  if (day <= 14) return [
-    close ? n+'아, 우리 언제 밥 한번 먹자! 요즘 어떻게 지내는지 듣고 싶어 😊' : n+'씨, 오랜만에 식사 한 번 같이 하실 수 있을까요? 😄',
-    close ? n+'아, 너무 오랜만이다. 밥 한 번 같이 먹어야 할 것 같아 ㅎㅎ' : n+'씨, 맛있는 곳 발견했는데 같이 가실 생각 없으세요? 😄',
-    close ? n+'아, 요즘 잘 지내는지 얼굴 한번 봐야겠다! 밥 먹으면서 이야기하자 🍽️' : n+'씨, 오랜만에 만나서 이야기 나눴으면 해서요. 식사 한번 해요 🍽️',
-  ]
-  if (day <= 21) return [
-    close ? n+'아, 요즘 내가 다니는 교회에서 진짜 좋은 경험들을 하고 있어. 나중에 얘기해줄게 😊' : n+'씨, 요즘 제가 교회에서 좋은 경험을 하고 있어서 나눠드리고 싶었어요 😊',
-    close ? n+'아, 나 요즘 너무 힘을 얻고 있어서 같이 나누고 싶다! 기회 되면 이야기하자 ☺️' : n+'씨, 좋은 이야기 하나 들려드려도 될까요? :)',
-    close ? n+'아, 나 요즘 진짜 좋은 거 발견했어. 같이 나눠주고 싶은데 어때? 😄' : n+'씨, 기회가 되면 제게 힘이 되는 이야기를 나눠드리고 싶어요 😊',
-  ]
-  return [
-    close ? n+'아, 이번에 우리 교회에서 특별한 행사가 있어. 한 번 같이 가볼래? 부담 없이 놀러온다 생각하면 돼 😊' : n+'씨, 이번에 저희 하남교회에서 특별한 행사가 있어요. 한 번쯤 와보시면 좋겠다 싶어서요 🙏',
-    close ? n+'아, 10월에 교회 행사인데 같이 가면 어때? 부담 없이 와도 되니까 생각해봐 😊' : n+'씨, 10월에 하남교회 행사가 있는데 와보실 생각 있으세요? 부담 없이 오셔도 돼요 😊',
-    close ? n+'아, 우리 교회 행사 같이 가면 너무 좋을 것 같아! 어때? 🙏' : n+'씨, 저희 교회 행사에 한 번 오시면 정말 좋아하실 것 같아서 초대드려요 🙏',
-  ]
+  const entry = DAILY_MSGS[day - 1] || DAILY_MSGS[0]
+  const list = close ? entry.c : entry.f
+  return list.map(m => m.replace(/\{n\}/g, n))
 }
 
 // ── 스와이프 뒤로가기 ──────────────────────────────────────────
@@ -527,14 +544,26 @@ function AddOverlay({ userId, onClose, onAdded }) {
 // 메시지 선택 오버레이 (독립 컴포넌트)
 // ══════════════════════════════════════════════════════════════
 function MessageSelectOverlay({ oikos, onClose }) {
-  const [copied, setCopied] = useState(null)
+  const [shared, setShared] = useState(null)
   const swipe = useSwipeBack(onClose)
   const templates = getMessageTemplates(oikos)
 
-  const handleSelect = (msg, idx) => {
-    navigator.clipboard?.writeText(msg).catch(()=>{})
-    setCopied(idx)
-    setTimeout(onClose, 900)
+  const handleSelect = async (msg, idx) => {
+    setShared(idx)
+    try {
+      if (navigator.share) {
+        // 네이티브 공유창 (카카오톡, 문자 등 선택)
+        await navigator.share({ text: msg })
+        setTimeout(onClose, 400)
+      } else {
+        // 공유 미지원(데스크탑) → 복사로 폴백
+        await navigator.clipboard?.writeText(msg)
+        setTimeout(onClose, 900)
+      }
+    } catch (e) {
+      // 사용자가 공유 취소 → 오버레이 유지 (다른 문구 선택 가능)
+      setShared(null)
+    }
   }
 
   return (
@@ -552,13 +581,13 @@ function MessageSelectOverlay({ oikos, onClose }) {
         <SPill stage={oikos.stage} />
       </div>
       <div style={{ flex:1,overflowY:'auto',padding:'12px 16px',display:'flex',flexDirection:'column',gap:8 }}>
-        <div style={{ fontSize:11,color:'#888780',marginBottom:4 }}>탭하면 바로 복사돼요 · 카카오에 붙여넣어 보내세요 👇</div>
+        <div style={{ fontSize:11,color:'#888780',marginBottom:4 }}>탭하면 공유창이 열려요 · 카카오톡·문자 등 선택해 보내세요 👇</div>
         {templates.map((msg,idx)=>(
           <div key={idx} onClick={()=>handleSelect(msg,idx)}
-            style={{ background:copied===idx?'#E1F5EE':'#fff', border:'1.5px solid '+(copied===idx?'#5DCAA5':'#d3d1c7'), borderRadius:14, padding:'14px 16px', cursor:'pointer', transition:'all 0.2s' }}>
+            style={{ background:shared===idx?'#E1F5EE':'#fff', border:'1.5px solid '+(shared===idx?'#5DCAA5':'#d3d1c7'), borderRadius:14, padding:'14px 16px', cursor:'pointer', transition:'all 0.2s' }}>
             <div style={{ fontSize:13,color:navy,lineHeight:1.65,marginBottom:6 }}>{msg}</div>
-            <div style={{ textAlign:'right',fontSize:11,fontWeight:700,color:copied===idx?'#085041':purple }}>
-              {copied===idx ? '✓ 복사됨!' : '탭해서 복사'}
+            <div style={{ textAlign:'right',fontSize:11,fontWeight:700,color:shared===idx?'#085041':purple }}>
+              {shared===idx ? '✓ 공유창 열림' : '📤 탭해서 공유'}
             </div>
           </div>
         ))}
@@ -647,9 +676,16 @@ function OikosApp({ session, profile, setProfile }) {
     showToast('카카오 선물하기로 연결됐어요')
   }
 
-  const handleInviteCopy = () => {
-    navigator.clipboard?.writeText('저희 교회 전도축제에 함께하실 수 있으세요? 부담 없이 오셔도 돼요 🙏')
-    showToast('초청 메시지가 복사됐어요!')
+  const handleInviteShare = async () => {
+    const msg = '저희 하남교회 ' + FESTIVAL_NAME + '에 초대합니다 🙏\n10월 25일, 부담 없이 함께해요. 좋은 시간이 될 거예요 😊'
+    try {
+      if (navigator.share) {
+        await navigator.share({ text: msg })
+      } else {
+        await navigator.clipboard?.writeText(msg)
+        showToast('초청 메시지가 복사됐어요!')
+      }
+    } catch (e) { /* 사용자 취소 */ }
   }
 
   const genPrayer = async () => {
@@ -671,9 +707,13 @@ function OikosApp({ session, profile, setProfile }) {
           '조건: "하늘에 계신 아버지 하나님"으로 시작, "예수님의 이름으로 기도합니다 아멘"으로 마무리, 이름을 친근하게 부르기, 200~300자, 기도문만 출력'
         }),
       })
-      const { text } = await res.json()
-      setPResult(text); setPState('result')
-    } catch { setPResult('오류가 발생했습니다. 다시 시도해주세요.'); setPState('result') }
+      const data = await res.json()
+      setPResult(data?.text || '기도문 생성에 실패했습니다.')
+      setPState('result')
+    } catch (e) {
+      setPResult('네트워크 오류가 발생했습니다.\n\n' + (e?.message || '') + '\n\n인터넷 연결을 확인하고 다시 시도해주세요.')
+      setPState('result')
+    }
   }
 
   // ── 홈 ────────────────────────────────────────────────────────
@@ -704,14 +744,15 @@ function OikosApp({ session, profile, setProfile }) {
           ))}
         </div>
         <div style={{ display:'flex', gap:4 }}>
-          {['월','화','수','목','금','토','주'].map((d,i)=>{
-            const date=new Date(), dow=date.getDay(), diff=i-(dow===0?6:dow-1)
+          {['주','월','화','수','목','금','토'].map((d,i)=>{
+            // 주일(일요일)=0 부터 시작. i=0(주일)~6(토)
+            const date=new Date(), dow=date.getDay(), diff=i-dow
             date.setDate(date.getDate()+diff)
-            const ds=date.toISOString().split('T')[0], td=new Date().toISOString().split('T')[0]
+            const ds=localYMD(date), td=localYMD()
             const done=prayerLogs.some(l=>l.prayed_at===ds), isT=ds===td
             return (
               <div key={i} style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:3 }}>
-                <span style={{ fontSize:9,color:'rgba(255,255,255,0.4)' }}>{d}</span>
+                <span style={{ fontSize:9,color: i===0 ? 'rgba(240,153,123,0.9)' : 'rgba(255,255,255,0.4)' }}>{d}</span>
                 <div style={{ width:26,height:26,borderRadius:'50%',background:done?'#5DCAA5':isT?purple:'rgba(255,255,255,0.08)',border:isT&&!done?'2px solid #9FE1CB':'none',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'#fff' }}>
                   {done?'✓':isT?'★':''}
                 </div>
@@ -782,7 +823,7 @@ function OikosApp({ session, profile, setProfile }) {
             <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}>
               {[
                 { icon:'☕', label:'기프티콘',   desc:'카카오 선물하기',        bg:'#E1F5EE', fn:()=>openGift(todayOikos) },
-                { icon:'✉️', label:'초청장 복사', desc:'전도축제 '+festLabel(), bg:'#FAECE7', fn:handleInviteCopy },
+                { icon:'✉️', label:'초청장 공유', desc:FESTIVAL_NAME, bg:'#FAECE7', fn:handleInviteShare },
               ].map((a,i)=>(
                 <div key={i} onClick={a.fn} style={{ background:'#fff',border:'0.5px solid #d3d1c7',borderRadius:14,padding:'13px 12px',cursor:'pointer' }}>
                   <div style={{ width:34,height:34,borderRadius:10,background:a.bg,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:8,fontSize:18 }}>{a.icon}</div>
@@ -817,7 +858,7 @@ function OikosApp({ session, profile, setProfile }) {
             )
           })}
           <div style={{ borderTop:'0.5px solid rgba(255,255,255,0.1)',paddingTop:8,marginTop:4,display:'flex',justifyContent:'space-between' }}>
-            <span style={{ fontSize:11,color:'#AFA9EC' }}>전도축제 <span style={{ color:'#9FE1CB',fontWeight:700 }}>{festLabel()}</span></span>
+            <span style={{ fontSize:11,color:'#AFA9EC' }}>{FESTIVAL_NAME} <span style={{ color:'#9FE1CB',fontWeight:700 }}>{festLabel()}</span></span>
             <span style={{ fontSize:11,color:'#AFA9EC' }}>평균 <span style={{ color:'#9FE1CB',fontWeight:700 }}>{oikosList.length?Math.round(oikosList.reduce((s,o)=>s+(o.day_in_challenge||1),0)/oikosList.length/30*100):0}%</span></span>
           </div>
         </div>
@@ -881,7 +922,7 @@ function OikosApp({ session, profile, setProfile }) {
     <div style={{ flex:1,overflowY:'auto' }}>
       <div style={{ background:navy,padding:'14px 20px 20px' }}>
         <div style={{ fontSize:18,fontWeight:700,color:'#fff' }}>주간 현황</div>
-        <div style={{ fontSize:12,color:'#AFA9EC',marginTop:2 }}>전도축제 {festLabel()}</div>
+        <div style={{ fontSize:12,color:'#AFA9EC',marginTop:2 }}>{FESTIVAL_NAME} {festLabel()}</div>
       </div>
       <div style={{ padding:'14px 16px',display:'flex',flexDirection:'column',gap:12 }}>
         <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}>
@@ -1019,7 +1060,7 @@ function OikosApp({ session, profile, setProfile }) {
               {selOikos&&[
                 { icon:'💬', bg:'#FEE500', name:'안부 메시지 선택', sub:'다양한 문구에서 고르기', fn:()=>openMsg(selOikos) },
                 { icon:'☕', bg:'#E1F5EE', name:'기프티콘 보내기', sub:'카카오 선물하기 열기', fn:()=>openGift(selOikos) },
-                { icon:'✉️', bg:'#FAECE7', name:'초청장 메시지 복사', sub:'전도축제 '+festLabel(), fn:handleInviteCopy },
+                { icon:'✉️', bg:'#FAECE7', name:'초청장 공유하기', sub:FESTIVAL_NAME+' 초대', fn:handleInviteShare },
               ].map((a,i)=>(
                 <div key={i} style={{ display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderBottom:i<2?'0.5px solid #f1efe8':'none' }}>
                   <div style={{ width:32,height:32,borderRadius:9,background:a.bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0 }}>{a.icon}</div>
