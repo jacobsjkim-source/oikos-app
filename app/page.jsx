@@ -183,29 +183,32 @@ export default function Page() {
   useEffect(() => {
     let mounted = true
 
+    const finishWithSession = async (s) => {
+      if (!mounted) return
+      setSession(s)
+      const { data: prof } = await fetchProfile(s.user.id)
+      if (!mounted) return
+      setProfile(prof)
+      setAppState(prof?.display_name && prof?.church_group ? 'app' : 'register')
+    }
+
     const init = async () => {
       try {
-        // 1) 저장된 세션 확인 (로컬스토리지 캐시 — 빠름)
+        // 1) 저장된 세션 확인 (로컬스토리지)
         const { data } = await supabase.auth.getSession()
         if (!mounted) return
+        if (data.session) { await finishWithSession(data.session); return }
 
-        if (!data.session) {
-          setAppState('register')
-          return
+        // 2) 세션 없으면 → 저장된 교구/이름/코드로 자동 재로그인 (30일 유지 핵심!)
+        let creds = null
+        try { creds = JSON.parse(localStorage.getItem('oikos_creds') || 'null') } catch {}
+        if (creds?.group && creds?.name && creds?.code) {
+          const { session: s } = await signInOrRegister(creds.group, creds.name, creds.code)
+          if (s && mounted) { await finishWithSession(s); return }
         }
 
-        // 2) 세션 있으면 프로필도 확인 (완전한 로그인 유지)
-        setSession(data.session)
-        const { data: prof } = await fetchProfile(data.session.user.id)
-        if (!mounted) return
-
-        setProfile(prof)
-        if (prof?.display_name && prof?.church_group) {
-          setAppState('app')
-        } else {
-          // 세션은 있지만 프로필 미완성 → 등록 화면 (기존 세션 전달)
-          setAppState('register')
-        }
+        // 3) 둘 다 없으면 등록 화면
+        if (mounted) setAppState('register')
       } catch {
         if (mounted) setAppState('register')
       }
@@ -213,24 +216,17 @@ export default function Page() {
 
     init()
 
-    // 5초 안에 못 끝나면 등록 화면으로
-    const timeout = setTimeout(() => { if (mounted) setAppState('register') }, 5000)
+    // 10초 후에도 '로딩 중'이면 등록 화면으로 (이미 app/register면 유지 — 버그 수정)
+    const timeout = setTimeout(() => {
+      if (mounted) setAppState(prev => prev === 'loading' ? 'register' : prev)
+    }, 10000)
 
-    // 세션 변화 감지 (로그아웃 등)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
+    // 로그아웃만 감지 (로그인은 init이 처리 — 중복 방지)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (!mounted) return
       if (event === 'SIGNED_OUT') {
+        try { localStorage.removeItem('oikos_creds') } catch {}
         setSession(null); setProfile(null); setAppState('register')
-        return
-      }
-      if (s && event === 'SIGNED_IN') {
-        setSession(s)
-        const { data: prof } = await fetchProfile(s.user.id)
-        if (!mounted) return
-        setProfile(prof)
-        if (prof?.display_name && prof?.church_group) {
-          setAppState('app')
-        }
       }
     })
 
@@ -296,6 +292,8 @@ function RegisterScreen({ session, onDone }) {
         user_code:    code,
       }
       await saveProfile(s.user.id, pd)
+      // 자동 재로그인용 정보 저장 (브라우저 초기화돼도 같은 계정 복구)
+      try { localStorage.setItem('oikos_creds', JSON.stringify({ group, name: name.trim(), code })) } catch {}
       onDone(s, { ...pd, id: s.user.id })
     } catch(e) {
       setMsg('오류가 발생했습니다. 다시 시도해주세요.')
@@ -598,8 +596,18 @@ function OikosApp({ session, profile, setProfile }) {
     const [{ data:oks }, { data:logs }] = await Promise.all([
       fetchOikos(userId), fetchPrayerLogs(userId, 60),
     ])
-    setOikos(oks||[]); setLogs(logs||[])
-    if ((oks||[]).length > 0 && !selId) setSelId(oks[0].id)
+    // created_at 기준으로 챌린지 Day 자동 계산 (등록일=Day 1)
+    const withDay = (oks||[]).map(o => {
+      let day = 1
+      if (o.created_at) {
+        const start = new Date(o.created_at); start.setHours(0,0,0,0)
+        const now = new Date(); now.setHours(0,0,0,0)
+        day = Math.max(1, Math.min(30, Math.floor((now - start) / 86400000) + 1))
+      }
+      return { ...o, day_in_challenge: day }
+    })
+    setOikos(withDay); setLogs(logs||[])
+    if (withDay.length > 0 && !selId) setSelId(withDay[0].id)
     setDL(false)
   }, [userId])
 
@@ -715,28 +723,66 @@ function OikosApp({ session, profile, setProfile }) {
 
       {todayOikos ? (
         <>
-          <div style={{ padding:'14px 16px 0' }}>
-            <div style={{ fontSize:12,fontWeight:700,color:'#444441',marginBottom:8 }}>오늘의 기도 대상</div>
-            <div style={{ background:purple,borderRadius:16,padding:14,display:'flex',gap:12,alignItems:'center' }}>
-              <Av name={todayOikos.name} ci={0} size={50} />
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:14,fontWeight:700,color:'#fff' }}>{todayOikos.name}</div>
-                <div style={{ fontSize:11,color:'#AFA9EC',marginTop:2,lineHeight:1.5 }}>{(todayOikos.topics||[]).slice(0,2).join(' · ')}</div>
+          {/* 오늘의 기도 대상 — 전체 스와이프 캐러셀 */}
+          <div style={{ padding:'14px 0 0' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0 16px', marginBottom:8 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#444441' }}>오늘의 기도 대상</div>
+              <div style={{ fontSize:11, fontWeight:700, color: prayedCount===oikosList.length ? '#0F6E56' : '#888780' }}>
+                {prayedCount===oikosList.length ? '🎉 오늘 모두 완료!' : prayedCount+'/'+oikosList.length+' 완료'}
               </div>
-              <Btn onClick={()=>handlePrayed(todayOikos.id)}
-                style={{ background:prayedToday(prayerLogs,todayOikos.id)?'#5DCAA5':'#9FE1CB',borderRadius:20,padding:'7px 11px',fontSize:11,fontWeight:700,color:'#085041',whiteSpace:'nowrap' }}>
-                {prayedToday(prayerLogs,todayOikos.id)?'기도 완료 ✓':'기도했어요'}
-              </Btn>
+            </div>
+            <div style={{ display:'flex', overflowX:'auto', scrollSnapType:'x mandatory', gap:10, padding:'0 16px', WebkitOverflowScrolling:'touch' }}>
+              {oikosList.map((o,i)=>{
+                const prayed = prayedToday(prayerLogs, o.id)
+                return (
+                  <div key={o.id} style={{ scrollSnapAlign:'start', flexShrink:0, width:'85%', background:prayed?'#3DAE8A':purple, borderRadius:18, padding:16, transition:'background 0.3s' }}>
+                    <div style={{ display:'flex', gap:12, alignItems:'center', marginBottom:10 }}>
+                      <Av name={o.name} ci={i} size={48} />
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:15, fontWeight:700, color:'#fff' }}>{o.name}</div>
+                        <div style={{ fontSize:11, color:'rgba(255,255,255,0.75)', marginTop:1 }}>{o.relation} · Day {o.day_in_challenge||1}</div>
+                      </div>
+                      <SPill stage={o.stage} />
+                    </div>
+                    <div style={{ minHeight:36, marginBottom:12 }}>
+                      {(o.topics||[]).slice(0,2).map((t,j)=>(
+                        <div key={j} style={{ fontSize:12, color:'rgba(255,255,255,0.85)', lineHeight:1.55 }}>· {t}</div>
+                      ))}
+                      {(!o.topics || o.topics.length===0) && (
+                        <div style={{ fontSize:12, color:'rgba(255,255,255,0.5)' }}>기도제목을 추가해보세요</div>
+                      )}
+                    </div>
+                    <div style={{ display:'flex', gap:6 }}>
+                      <Btn onClick={()=>handlePrayed(o.id)}
+                        style={{ flex:1, height:42, background:prayed?'rgba(255,255,255,0.22)':'#fff', borderRadius:12, fontSize:13, fontWeight:700, color:prayed?'#fff':purple, display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}>
+                        {prayed ? '✓ 오늘 기도 완료' : '🙏 기도했어요'}
+                      </Btn>
+                      <Btn onClick={()=>openPrayer(o.id)} style={{ width:42, height:42, background:'rgba(255,255,255,0.18)', borderRadius:12, fontSize:16, color:'#fff' }}>✨</Btn>
+                      <Btn onClick={()=>openMsg(o)} style={{ width:42, height:42, background:'rgba(255,255,255,0.18)', borderRadius:12, fontSize:16, color:'#fff' }}>💬</Btn>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {oikosList.length > 1 && (
+              <div style={{ display:'flex', gap:5, justifyContent:'center', marginTop:12 }}>
+                {oikosList.map((o,i)=>(
+                  <div key={i} style={{ width:7, height:7, borderRadius:'50%', background:prayedToday(prayerLogs,o.id)?'#5DCAA5':'#d3d1c7', transition:'background 0.3s' }} />
+                ))}
+              </div>
+            )}
+            <div style={{ textAlign:'center', fontSize:10, color:'#B4B2A9', marginTop:6 }}>
+              ← 옆으로 넘기며 {oikosList.length}명 모두 기도해요 →
             </div>
           </div>
-          <div style={{ padding:'14px 16px 0' }}>
-            <div style={{ fontSize:12,fontWeight:700,color:'#444441',marginBottom:8 }}>원클릭 액션</div>
+
+          {/* 빠른 도구 */}
+          <div style={{ padding:'16px 16px 0' }}>
+            <div style={{ fontSize:12,fontWeight:700,color:'#444441',marginBottom:8 }}>빠른 도구</div>
             <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}>
               {[
-                { icon:'✨', label:'AI 기도문',  desc:'맞춤 기도문 생성',          bg:'#EEEDFE', ic:purple,    fn:()=>openPrayer(todayOikos.id) },
-                { icon:'💬', label:'안부 메시지', desc:'다양한 문구에서 선택',      bg:'#FEE500', ic:navy,      fn:()=>openMsg(todayOikos) },
-                { icon:'☕', label:'기프티콘',   desc:'카카오 선물하기',            bg:'#E1F5EE', ic:'#0F6E56', fn:()=>openGift(todayOikos) },
-                { icon:'✉️', label:'초청장 복사', desc:'전도축제 '+festLabel(),     bg:'#FAECE7', ic:'#993C1D', fn:handleInviteCopy },
+                { icon:'☕', label:'기프티콘',   desc:'카카오 선물하기',        bg:'#E1F5EE', fn:()=>openGift(todayOikos) },
+                { icon:'✉️', label:'초청장 복사', desc:'전도축제 '+festLabel(), bg:'#FAECE7', fn:handleInviteCopy },
               ].map((a,i)=>(
                 <div key={i} onClick={a.fn} style={{ background:'#fff',border:'0.5px solid #d3d1c7',borderRadius:14,padding:'13px 12px',cursor:'pointer' }}>
                   <div style={{ width:34,height:34,borderRadius:10,background:a.bg,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:8,fontSize:18 }}>{a.icon}</div>
@@ -745,18 +791,6 @@ function OikosApp({ session, profile, setProfile }) {
                 </div>
               ))}
             </div>
-          </div>
-          <div style={{ margin:'14px 16px 0' }}>
-            {(()=>{ const da=getDA(todayOikos.day_in_challenge||1); return (
-              <div style={{ background:'#fff',border:'1.5px solid '+(SM[todayOikos.stage]?.bar||'#7F77DD'),borderRadius:14,padding:14,display:'flex',alignItems:'center',gap:12 }}>
-                <div style={{ width:42,height:42,borderRadius:12,background:SM[todayOikos.stage]?.bg||'#EEEDFE',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0 }}>{da.icon}</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13,fontWeight:700,color:navy,marginBottom:2 }}>{da.title}</div>
-                  <div style={{ fontSize:11,color:'#888780' }}>Day {todayOikos.day_in_challenge||1} · {todayOikos.name}님에게 딱 좋은 타이밍</div>
-                </div>
-                <Btn onClick={()=>openMsg(todayOikos)} style={{ background:purple,borderRadius:10,padding:'7px 12px',fontSize:11,fontWeight:700,color:'#fff',whiteSpace:'nowrap' }}>문구 선택</Btn>
-              </div>
-            )})()}
           </div>
         </>
       ) : (
