@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  supabase, signOut,
+  supabase, signOut, signInOrRegister,
   fetchOikos, createOikos, updateOikos, deleteOikos,
   fetchPrayerLogs, logPrayer, logAction,
   fetchProfile, saveProfile,
@@ -278,11 +278,15 @@ function RegisterScreen({ session, onDone }) {
     if (!canProceed) return
     setSaving(true); setMsg('')
     try {
-      let s = session
+      // 교구+이름+코드로 항상 같은 계정 로그인/생성
+      const { session: s, error } = await signInOrRegister(group, name.trim(), code)
+      if (error) {
+        setMsg('오류: ' + error.message)
+        setSaving(false); return
+      }
       if (!s) {
-        const { data, error } = await supabase.auth.signInAnonymously()
-        if (error) { setMsg('오류가 발생했습니다. 다시 시도해주세요.'); setSaving(false); return }
-        s = data.session
+        setMsg('Supabase 이메일 확인을 비활성화해주세요.')
+        setSaving(false); return
       }
       const pd = {
         display_name: name.trim(),
@@ -293,7 +297,7 @@ function RegisterScreen({ session, onDone }) {
       }
       await saveProfile(s.user.id, pd)
       onDone(s, { ...pd, id: s.user.id })
-    } catch {
+    } catch(e) {
       setMsg('오류가 발생했습니다. 다시 시도해주세요.')
     }
     setSaving(false)
