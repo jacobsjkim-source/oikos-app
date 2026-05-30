@@ -1059,3 +1059,15 @@ function OikosApp({ session, profile, setProfile }) {
             </div>
           </div>
    
+        </div>
+      )}
+
+      {/* 토스트 */}
+      {toast && (
+        <div style={{ position:'absolute',bottom:72,left:'50%',transform:'translateX(-50%)',background:navy,color:'#fff',fontSize:13,fontWeight:500,padding:'10px 18px',borderRadius:20,whiteSpace:'nowrap',zIndex:200,maxWidth:'80%',textAlign:'center' }}>
+          {toast}
+        </div>
+      )}
+    </div>
+  )
+}
