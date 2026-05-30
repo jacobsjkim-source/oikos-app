@@ -601,8 +601,10 @@ function MessageSelectOverlay({ oikos, onClose }) {
 // ══════════════════════════════════════════════════════════════
 function EditTopicsOverlay({ oikos, onClose, onSaved }) {
   const [flipped, setFlipped] = useState(false)
+  const [name, setName]       = useState(oikos.name || '')
   const [topics, setTopics]   = useState((oikos.topics || []).join('\n'))
   const [saving, setSaving]   = useState(false)
+  const [savedName, setSavedName] = useState(oikos.name || '')
   const [savedList, setSavedList] = useState(oikos.topics || [])
   const ci = oikos._ci || 0
 
@@ -613,13 +615,15 @@ function EditTopicsOverlay({ oikos, onClose, onSaved }) {
   }, [])
 
   const handleSave = async () => {
+    if (!name.trim()) return
     setSaving(true)
     const list = topics.split('\n').map(t => t.trim()).filter(Boolean)
-    await updateOikos(oikos.id, { topics: list })
+    await updateOikos(oikos.id, { name: name.trim(), topics: list })
     setSaving(false)
+    setSavedName(name.trim())
     setSavedList(list)       // 앞면도 새 내용으로 갱신
     setFlipped(false)        // 앞면으로 휙 돌아가며 결과 보여주기
-    onSaved(list)
+    onSaved()
     setTimeout(onClose, 1100)
   }
 
@@ -644,9 +648,9 @@ function EditTopicsOverlay({ oikos, onClose, onSaved }) {
             display:'flex', flexDirection:'column', alignItems:'center',
           }}>
             <div style={{ width:72, height:72, borderRadius:'50%', background:avBg, color:avCl, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, fontWeight:700, marginBottom:14 }}>
-              {oikos.name?.slice(0,2)}
+              {savedName?.slice(0,2)}
             </div>
-            <div style={{ fontSize:19, fontWeight:700, color:navy, marginBottom:4 }}>{oikos.name}</div>
+            <div style={{ fontSize:19, fontWeight:700, color:navy, marginBottom:4 }}>{savedName}</div>
             <div style={{ fontSize:12, color:'#888780', marginBottom:14 }}>{oikos.relation} · Day {oikos.day_in_challenge||1}</div>
             <div style={{ width:'100%', flex:1, overflowY:'auto' }}>
               <div style={{ fontSize:11, fontWeight:700, color:'#888780', marginBottom:8 }}>기도제목</div>
@@ -670,20 +674,24 @@ function EditTopicsOverlay({ oikos, onClose, onSaved }) {
           }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
               <div style={{ width:38, height:38, borderRadius:'50%', background:avBg, color:avCl, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700 }}>
-                {oikos.name?.slice(0,2)}
+                {(name||'?').slice(0,2)}
               </div>
               <div>
-                <div style={{ fontSize:15, fontWeight:700, color:navy }}>{oikos.name}님의</div>
-                <div style={{ fontSize:11, color:'#888780' }}>기도제목 수정 ✏️</div>
+                <div style={{ fontSize:15, fontWeight:700, color:navy }}>정보 수정 ✏️</div>
+                <div style={{ fontSize:11, color:'#888780' }}>이름과 기도제목을 바꿀 수 있어요</div>
               </div>
             </div>
+            <div style={{ fontSize:11, fontWeight:700, color:'#888780', marginBottom:5 }}>이름</div>
+            <KrInput value={name} onChange={setName} placeholder="이름"
+              style={{ width:'100%', height:42, background:'#f7f5f0', border:'1.5px solid #e8e5de', borderRadius:12, padding:'0 14px', fontSize:14, fontFamily:'inherit', outline:'none', color:navy, marginBottom:14 }} />
+            <div style={{ fontSize:11, fontWeight:700, color:'#888780', marginBottom:5 }}>기도제목</div>
             <KrTextarea value={topics} onChange={setTopics}
               placeholder={'복음에 마음이 열리도록\n가정에 평안이 임하도록\n교회에 함께 나오도록'}
               style={{ flex:1, width:'100%', background:'#f7f5f0', border:'1.5px solid #e8e5de', borderRadius:14, padding:'12px 14px', fontSize:13, fontFamily:'inherit', outline:'none', resize:'none', lineHeight:1.7, color:navy }} />
-            <div style={{ fontSize:10, color:'#888780', margin:'6px 2px 12px' }}>한 줄에 하나씩 입력하세요</div>
+            <div style={{ fontSize:10, color:'#888780', margin:'6px 2px 12px' }}>기도제목은 한 줄에 하나씩</div>
             <div style={{ display:'flex', gap:8 }}>
               <Btn onClick={()=>setFlipped(false)} style={{ width:48, height:46, background:'#f1efe8', borderRadius:12, fontSize:18 }}>↩</Btn>
-              <Btn onClick={handleSave} style={{ flex:1, height:46, background:purple, borderRadius:12, color:'#fff', fontSize:14, fontWeight:700 }}>
+              <Btn onClick={handleSave} style={{ flex:1, height:46, background:name.trim()?purple:'#d3d1c7', borderRadius:12, color:'#fff', fontSize:14, fontWeight:700 }}>
                 {saving ? '저장 중...' : '저장하기 ✓'}
               </Btn>
             </div>
