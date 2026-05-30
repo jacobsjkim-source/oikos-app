@@ -200,7 +200,7 @@ export default function Page() {
         if (!mounted) return
 
         setProfile(prof)
-        if (prof?.display_name && prof?.church_group && prof?.user_code) {
+        if (prof?.display_name && prof?.church_group) {
           setAppState('app')
         } else {
           // 세션은 있지만 프로필 미완성 → 등록 화면 (기존 세션 전달)
@@ -228,7 +228,7 @@ export default function Page() {
         const { data: prof } = await fetchProfile(s.user.id)
         if (!mounted) return
         setProfile(prof)
-        if (prof?.display_name && prof?.church_group && prof?.user_code) {
+        if (prof?.display_name && prof?.church_group) {
           setAppState('app')
         }
       }
