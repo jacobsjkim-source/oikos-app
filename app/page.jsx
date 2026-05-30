@@ -704,6 +704,148 @@ function EditTopicsOverlay({ oikos, onClose, onSaved }) {
     </div>
   )
 }
+
+// ══════════════════════════════════════════════════════════════
+// 개인 맞춤 초청 카드 (이름 박힌 이미지 생성 → 공유/저장)
+// ══════════════════════════════════════════════════════════════
+function InviteCardOverlay({ oikos, inviter, onClose }) {
+  const canvasRef = useRef(null)
+  const [ready, setReady]     = useState(false)
+  const [sharing, setSharing] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    const draw = async () => {
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const W = 1080, H = 1440
+      canvas.width = W; canvas.height = H
+      const ctx = canvas.getContext('2d')
+
+      try {
+        await document.fonts.load('700 130px "Noto Serif KR"')
+        await document.fonts.load('700 60px "Noto Sans KR"')
+        await document.fonts.load('400 40px "Noto Sans KR"')
+        await document.fonts.ready
+      } catch {}
+      if (!alive) return
+
+      const rr = (x,y,w,h,r) => {
+        ctx.beginPath()
+        ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r)
+        ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath()
+      }
+      const spaced = (text,x,y,sp) => {
+        const chars=[...text]; let total=0
+        chars.forEach(c=> total+=ctx.measureText(c).width+sp); total-=sp
+        let sx=x-total/2; const prev=ctx.textAlign; ctx.textAlign='left'
+        chars.forEach(c=>{ ctx.fillText(c,sx,y); sx+=ctx.measureText(c).width+sp })
+        ctx.textAlign=prev
+      }
+
+      // 배경 그라디언트
+      const bg = ctx.createLinearGradient(0,0,W,H)
+      bg.addColorStop(0,'#16162a'); bg.addColorStop(0.6,'#221b45'); bg.addColorStop(1,'#2d2456')
+      ctx.fillStyle=bg; ctx.fillRect(0,0,W,H)
+
+      // 은은한 빛
+      const glow=(gx,gy,rad,col)=>{ const g=ctx.createRadialGradient(gx,gy,0,gx,gy,rad); g.addColorStop(0,col); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H) }
+      ctx.globalAlpha=0.18; glow(W*0.82,H*0.13,420,'#6EC9B3'); glow(W*0.15,H*0.9,480,'#7F77DD'); ctx.globalAlpha=1
+
+      // 외곽 프레임
+      ctx.strokeStyle='rgba(255,255,255,0.18)'; ctx.lineWidth=2.5
+      rr(56,56,W-112,H-112,30); ctx.stroke()
+
+      ctx.textAlign='center'
+
+      // 상단 라벨
+      ctx.fillStyle='#9FE1CB'; ctx.font='600 32px "Noto Sans KR"'
+      spaced('I N V I T A T I O N', W/2, 190, 6)
+
+      // O 링 모티프
+      const cx=W/2, cy=375, r=86
+      const ring=ctx.createLinearGradient(cx-r,cy-r,cx+r,cy+r)
+      ring.addColorStop(0,'#A89EF0'); ring.addColorStop(0.5,'#6EC9B3'); ring.addColorStop(1,'#7FC8E8')
+      ctx.strokeStyle=ring; ctx.lineWidth=24; ctx.lineCap='round'
+      ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke()
+
+      // 받는 사람 이름 (길면 폰트 축소)
+      let nameSize=132
+      ctx.font=`700 ${nameSize}px "Noto Serif KR"`
+      while(ctx.measureText(oikos.name).width > W-260 && nameSize>60){ nameSize-=8; ctx.font=`700 ${nameSize}px "Noto Serif KR"` }
+      ctx.fillStyle='#fff'; ctx.fillText(oikos.name, W/2, 600)
+      ctx.fillStyle='rgba(255,255,255,0.72)'; ctx.font='400 42px "Noto Sans KR"'
+      ctx.fillText('님을 초대합니다', W/2, 678)
+
+      // 구분선
+      ctx.strokeStyle='rgba(159,225,203,0.4)'; ctx.lineWidth=2
+      ctx.beginPath(); ctx.moveTo(W/2-90,740); ctx.lineTo(W/2+90,740); ctx.stroke()
+
+      // 축제명
+      ctx.fillStyle='#9FE1CB'; ctx.font='700 66px "Noto Sans KR"'
+      ctx.fillText(FESTIVAL_NAME, W/2, 850)
+
+      // 날짜/장소 박스
+      ctx.fillStyle='rgba(255,255,255,0.07)'; rr(W/2-280,915,560,150,24); ctx.fill()
+      ctx.fillStyle='#fff'; ctx.font='600 46px "Noto Sans KR"'
+      ctx.fillText('2026. 10. 25  주일', W/2, 985)
+      ctx.fillStyle='rgba(255,255,255,0.65)'; ctx.font='400 36px "Noto Sans KR"'
+      ctx.fillText('하남교회', W/2, 1035)
+
+      // 초대 메시지
+      ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='400 40px "Noto Sans KR"'
+      const lines=['함께 예배하며 은혜를','나누는 귀한 자리에','당신을 초대합니다']
+      lines.forEach((ln,i)=> ctx.fillText(ln, W/2, 1165+i*60))
+
+      // with
+      if (inviter) {
+        ctx.fillStyle='#9FE1CB'; ctx.font='600 38px "Noto Sans KR"'
+        ctx.fillText('with. '+inviter, W/2, 1352)
+      }
+
+      setReady(true)
+    }
+    draw()
+    return () => { alive=false }
+  }, [oikos, inviter])
+
+  const handleShare = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    setSharing(true)
+    canvas.toBlob(async (blob) => {
+      if (!blob) { setSharing(false); return }
+      try {
+        const file = new File([blob], 'oikos-invite.png', { type:'image/png' })
+        if (navigator.canShare && navigator.canShare({ files:[file] })) {
+          await navigator.share({ files:[file], text: FESTIVAL_NAME + ' 초대장이에요 🙏' })
+        } else {
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a'); a.href=url; a.download='프라미스_초청장.png'; a.click()
+          URL.revokeObjectURL(url)
+        }
+      } catch(e) { /* 취소 */ }
+      setSharing(false)
+    }, 'image/png')
+  }
+
+  return (
+    <div onClick={onClose} style={{ position:'absolute', inset:0, background:'rgba(15,15,28,0.7)', backdropFilter:'blur(4px)', zIndex:160, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:24 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ width:'100%', maxWidth:320, display:'flex', flexDirection:'column', alignItems:'center' }}>
+        <canvas ref={canvasRef}
+          style={{ width:'100%', borderRadius:20, boxShadow:'0 24px 60px rgba(0,0,0,0.5)', opacity:ready?1:0.4, transition:'opacity 0.3s' }} />
+        <Btn onClick={handleShare}
+          style={{ width:'100%', height:52, background:'#9FE1CB', borderRadius:14, color:navy, fontSize:15, fontWeight:700, marginTop:16, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          {sharing ? '준비 중...' : '📤 초청 카드 공유하기'}
+        </Btn>
+        <div style={{ fontSize:11, color:'rgba(255,255,255,0.6)', marginTop:8, textAlign:'center' }}>
+          카카오톡·문자로 보내거나 이미지로 저장돼요
+        </div>
+        <Btn onClick={onClose} style={{ background:'rgba(255,255,255,0.15)', color:'#fff', borderRadius:20, padding:'8px 20px', fontSize:12, fontWeight:700, marginTop:14 }}>닫기</Btn>
+      </div>
+    </div>
+  )
+}
 // ══════════════════════════════════════════════════════════════
 function OikosApp({ session, profile, setProfile }) {
   const userId = session.user.id
@@ -715,6 +857,7 @@ function OikosApp({ session, profile, setProfile }) {
   const [selId, setSelId]            = useState(null)
   const [msgTarget, setMsgTarget]    = useState(null)
   const [editTarget, setEditTarget]  = useState(null)
+  const [inviteTarget, setInviteTarget] = useState(null)
   const [deleteTarget, setDelTarget] = useState(null)
   const [pState, setPState]          = useState('select')
   const [pStyle, setPStyle]          = useState('short')
@@ -784,16 +927,9 @@ function OikosApp({ session, profile, setProfile }) {
     showToast('카카오 선물하기로 연결됐어요')
   }
 
-  const handleInviteShare = async () => {
-    const msg = '저희 하남교회 ' + FESTIVAL_NAME + '에 초대합니다 🙏\n10월 25일, 부담 없이 함께해요. 좋은 시간이 될 거예요 😊'
-    try {
-      if (navigator.share) {
-        await navigator.share({ text: msg })
-      } else {
-        await navigator.clipboard?.writeText(msg)
-        showToast('초청 메시지가 복사됐어요!')
-      }
-    } catch (e) { /* 사용자 취소 */ }
+  const openInvite = (oikos) => {
+    if (!oikos) { showToast('먼저 오이코스를 선택해주세요'); return }
+    setInviteTarget(oikos)
   }
 
   const genPrayer = async () => {
@@ -934,7 +1070,7 @@ function OikosApp({ session, profile, setProfile }) {
             <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}>
               {[
                 { icon:'☕', label:'기프티콘',   desc:'카카오 선물하기',        bg:'#E1F5EE', fn:()=>openGift(todayOikos) },
-                { icon:'✉️', label:'초청장 공유', desc:FESTIVAL_NAME, bg:'#FAECE7', fn:handleInviteShare },
+                { icon:'✉️', label:'초청 카드', desc:FESTIVAL_NAME, bg:'#FAECE7', fn:()=>openInvite(todayOikos) },
               ].map((a,i)=>(
                 <div key={i} onClick={a.fn} style={{ background:'#fff',border:'0.5px solid #d3d1c7',borderRadius:14,padding:'13px 12px',cursor:'pointer' }}>
                   <div style={{ width:34,height:34,borderRadius:10,background:a.bg,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:8,fontSize:18 }}>{a.icon}</div>
@@ -1172,7 +1308,7 @@ function OikosApp({ session, profile, setProfile }) {
               {selOikos&&[
                 { icon:'💬', bg:'#FEE500', name:'안부 메시지 선택', sub:'다양한 문구에서 고르기', fn:()=>openMsg(selOikos) },
                 { icon:'☕', bg:'#E1F5EE', name:'기프티콘 보내기', sub:'카카오 선물하기 열기', fn:()=>openGift(selOikos) },
-                { icon:'✉️', bg:'#FAECE7', name:'초청장 공유하기', sub:FESTIVAL_NAME+' 초대', fn:handleInviteShare },
+                { icon:'✉️', bg:'#FAECE7', name:'초청 카드 만들기', sub:FESTIVAL_NAME+' 초대장', fn:()=>openInvite(selOikos) },
               ].map((a,i)=>(
                 <div key={i} style={{ display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderBottom:i<2?'0.5px solid #f1efe8':'none' }}>
                   <div style={{ width:32,height:32,borderRadius:9,background:a.bg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0 }}>{a.icon}</div>
@@ -1243,6 +1379,14 @@ function OikosApp({ session, profile, setProfile }) {
           oikos={editTarget}
           onClose={()=>setEditTarget(null)}
           onSaved={()=>{ loadData(); showToast('기도제목이 수정됐어요 🙏') }}
+        />
+      )}
+
+      {inviteTarget && (
+        <InviteCardOverlay
+          oikos={inviteTarget}
+          inviter={displayName}
+          onClose={()=>setInviteTarget(null)}
         />
       )}
 
